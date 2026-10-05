@@ -2,7 +2,7 @@ import { createSignal } from "solid-js"
 import { jsx } from "@opentui/solid/jsx-runtime"
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 
-const BASE = process.env.HALOGEN_TELEMETRY_URL ?? "http://127.0.0.1:8731"
+const DEFAULT_BASE = "http://127.0.0.1:8731"
 const PROVIDER = "halogen"
 const FETCH_TIMEOUT = 1500
 
@@ -31,23 +31,30 @@ function parsePrometheus(text: string): Record<string, number> {
   return out
 }
 
-async function snapshot(): Promise<Snapshot> {
+function pick(metrics: Record<string, number>, suffix: string): number {
+  for (const key of Object.keys(metrics)) {
+    if (key.endsWith(suffix)) return metrics[key]
+  }
+  return 0
+}
+
+async function snapshot(base: string): Promise<Snapshot> {
   const [metrics, cache] = await Promise.all([
-    fetch(`${BASE}/metrics`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
+    fetch(`${base}/metrics`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`/metrics -> ${r.status}`))))
       .then(parsePrometheus),
-    fetch(`${BASE}/cache`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
+    fetch(`${base}/cache`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`/cache -> ${r.status}`)))),
   ])
   return {
-    promptTokens: metrics["llamacpp:prompt_tokens_total"] ?? 0,
-    promptSeconds: metrics["llamacpp:prompt_seconds_total"] ?? 0,
-    genTokens: metrics["llamacpp:tokens_predicted_total"] ?? 0,
-    genSeconds: metrics["llamacpp:tokens_predicted_seconds_total"] ?? 0,
-    cachedTokens: metrics["halogen:prompt_tokens_cached_total"] ?? 0,
-    draftTokens: metrics["halogen:draft_tokens_total"] ?? 0,
-    draftAccepted: metrics["halogen:draft_tokens_accepted_total"] ?? 0,
-    kvRatio: metrics["llamacpp:kv_cache_usage_ratio"] ?? 0,
+    promptTokens: pick(metrics, "prompt_tokens_total"),
+    promptSeconds: pick(metrics, "prompt_seconds_total"),
+    genTokens: pick(metrics, "tokens_predicted_total"),
+    genSeconds: pick(metrics, "tokens_predicted_seconds_total"),
+    cachedTokens: pick(metrics, "prompt_tokens_cached_total"),
+    draftTokens: pick(metrics, "draft_tokens_total"),
+    draftAccepted: pick(metrics, "draft_tokens_accepted_total"),
+    kvRatio: pick(metrics, "kv_cache_usage_ratio"),
     tokensSaved: cache?.prompt_tokens_saved ?? 0,
   }
 }
@@ -80,7 +87,11 @@ function summarize(before: Snapshot, after: Snapshot): string | undefined {
   return parts.join("  ")
 }
 
-const tui: TuiPlugin = async (api) => {
+const tui: TuiPlugin = async (api, options) => {
+  const base =
+    (typeof options?.url === "string" && options.url.replace(/\/$/, "")) ||
+    process.env.HALOGEN_TELEMETRY_URL ||
+    DEFAULT_BASE
   const [line, setLine] = createSignal<string>()
   const turns = new Map<string, Snapshot>()
   const pending = new Set<string>()
@@ -88,7 +99,7 @@ const tui: TuiPlugin = async (api) => {
   const take = (sessionID: string) => {
     if (turns.has(sessionID) || pending.has(sessionID)) return
     pending.add(sessionID)
-    snapshot()
+    snapshot(base)
       .then((s) => turns.set(sessionID, s))
       .catch(() => {})
       .finally(() => pending.delete(sessionID))
@@ -98,7 +109,7 @@ const tui: TuiPlugin = async (api) => {
     const before = turns.get(sessionID)
     if (!before) return
     turns.delete(sessionID)
-    snapshot()
+    snapshot(base)
       .then((after) => {
         const summary = summarize(before, after)
         if (summary) setLine(summary)

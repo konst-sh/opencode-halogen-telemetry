@@ -1,7 +1,7 @@
 {
   "name": "opencode-halogen-telemetry",
   "version": "0.1.0",
-  "description": "Persistent halogen llama.cpp server telemetry bar for the opencode TUI",
+  "description": "Persistent halogen OpenAI-compatible server telemetry bar for the opencode TUI",
   "type": "module",
   "license": "MIT",
   "keywords": [
