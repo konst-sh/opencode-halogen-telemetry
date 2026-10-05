@@ -107,10 +107,11 @@ function summarize(before: Snapshot, after: Snapshot): Row | undefined {
 type Tone = "muted" | "success" | "warning"
 
 function barParts(row: Row): Array<[string, Tone]> {
-  const parts: Array<[string, Tone]> = [[`${row.gen} gen`, "muted"]]
-  if (row.prefill !== "-") parts.push([`${row.prefill} prefill`, "muted"])
-  if (row.cache !== "-") parts.push([`cache ${row.cache}`, "muted"])
+  const parts: Array<[string, Tone]> = []
+  if (row.prefill !== "-") parts.push([`prefill ${row.prefill}`, "muted"])
+  parts.push([`gen ${row.gen}`, "muted"])
   if (row.spec !== "-") parts.push([`spec ${row.spec}`, "muted"])
+  if (row.cache !== "-") parts.push([`cache ${row.cache}`, "muted"])
   parts.push([`KV ${row.kv}`, Number.parseInt(row.kv) >= 85 ? "warning" : "muted"])
   if (row.saved !== "-") parts.push([`saved ${row.saved}`, "success"])
   return parts
@@ -121,10 +122,10 @@ type Col = { label: string; width: number; get: (r: Row) => string }
 const WIDE: Col[] = [
   { label: "#", width: 3, get: (r) => String(r.n) },
   { label: "time", width: 9, get: (r) => r.time },
-  { label: "gen", width: 9, get: (r) => r.gen },
   { label: "prefill", width: 9, get: (r) => r.prefill },
-  { label: "cache", width: 6, get: (r) => r.cache },
+  { label: "gen", width: 9, get: (r) => r.gen },
   { label: "spec", width: 5, get: (r) => r.spec },
+  { label: "cache", width: 6, get: (r) => r.cache },
   { label: "KV", width: 5, get: (r) => r.kv },
   { label: "saved", width: 10, get: (r) => r.saved },
 ]
@@ -133,8 +134,8 @@ const NARROW: Col[] = [
   { label: "#", width: 2, get: (r) => String(r.n) },
   { label: "time", width: 8, get: (r) => r.time },
   { label: "gen", width: 9, get: (r) => r.gen },
-  { label: "cache", width: 5, get: (r) => r.cache },
   { label: "spec", width: 4, get: (r) => r.spec },
+  { label: "cache", width: 5, get: (r) => r.cache },
   { label: "KV", width: 4, get: (r) => r.kv },
   { label: "saved", width: 10, get: (r) => r.saved },
 ]
@@ -211,7 +212,6 @@ const tui: TuiPlugin = async (api, options) => {
             : jsx("text", { fg: t.textMuted, attributes: 1, wrapMode: "none", truncate: true, children: () => header }),
           ...list.map((row, i) =>
             jsx("text", {
-              wrapMode: "none",
               wrapMode: "none",
               truncate: true,
               fg:
