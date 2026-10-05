@@ -1,5 +1,6 @@
 import { appendFileSync } from "node:fs"
-try { appendFileSync("/tmp/opencode/halogen-pkg-debug.log", new Date().toISOString() + " module load\n") } catch {}
+const dbg = (m) => { try { appendFileSync("/tmp/opencode/halogen-pkg-debug.log", new Date().toISOString() + " " + m + "\n") } catch {} }
+dbg("module load")
 import { createSignal } from "solid-js"
 import { jsx } from "@opentui/solid/jsx-runtime"
 
@@ -69,7 +70,7 @@ function summarize(before, after) {
 }
 
 const tui = async (api, options) => {
-  try { appendFileSync("/tmp/opencode/halogen-pkg-debug.log", new Date().toISOString() + " tui() " + JSON.stringify(options) + "\n") } catch {}
+  dbg("tui() " + JSON.stringify(options))
   const base =
     options?.url ??
     process.env.HALOGEN_TELEMETRY_URL ??
@@ -101,7 +102,7 @@ const tui = async (api, options) => {
   }
 
   api.event.on("message.updated", (event) => {
-    try { appendFileSync("/tmp/opencode/halogen-pkg-debug.log", "msg.updated " + event.properties.info.role + " " + event.properties.info.providerID + "\n") } catch {}
+    dbg("msg.updated " + event.properties.info.role + " " + event.properties.info.providerID)
     const info = event.properties.info
     if (info.role !== "assistant" || info.providerID !== PROVIDER) return
     take(event.properties.sessionID)
@@ -115,7 +116,7 @@ const tui = async (api, options) => {
     order: 100,
     slots: {
       app_bottom: (ctx) =>
-        (try { appendFileSync("/tmp/opencode/halogen-pkg-debug.log", "app_bottom render\n") } catch {}, jsx("box", {
+        (dbg("app_bottom render"), jsx("box", {
           flexShrink: 0,
           paddingLeft: 1,
           children: () => {
