@@ -297,7 +297,7 @@ const tui: TuiPlugin = async (api, options) => {
             const fg = (tone: Tone) =>
               tone === "success" ? t.success : tone === "warning" ? t.warning : t.textMuted
             const header = jsx("text", { fg: t.text, attributes: 1, children: () => "Halogen telemetry" })
-            const hint = jsx("text", { wrapMode: "none", fg: t.borderSubtle, children: () => "(Ctrl+X+T for history)" })
+            const hint = jsx("text", { wrapMode: "none", fg: t.borderSubtle, children: () => "(Ctr+X,T for history)" })
             if (!row) return [header, jsx("text", { fg: t.textMuted, children: () => "idle" }), hint]
             return [
               header,
