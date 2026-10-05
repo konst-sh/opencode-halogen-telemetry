@@ -28,7 +28,7 @@ type Row = {
   spec: string
   kv: string
   saved: string
-  session: string
+  sessionID: string
 }
 
 function parsePrometheus(text: string): Record<string, number> {
@@ -100,30 +100,31 @@ function summarize(before: Snapshot, after: Snapshot): Row | undefined {
     spec: draft > 0 ? `${fmt((100 * accepted) / draft, 0)}%` : "-",
     kv: `${fmt(100 * after.kvRatio, 0)}%`,
     saved: saved > 0 ? `${fmt(saved, 0)} tok` : "-",
-    session: "",
+    sessionID: "",
   }
 }
 
-function barText(row: Row): string {
-  const parts = [`${row.gen} gen`]
-  if (row.prefill !== "-") parts.push(`${row.prefill} prefill`)
-  if (row.cache !== "-") parts.push(`cache ${row.cache}`)
-  if (row.spec !== "-") parts.push(`spec ${row.spec}`)
-  parts.push(`KV ${row.kv}`)
-  if (row.saved !== "-") parts.push(`saved ${row.saved}`)
-  return parts.join("  ")
+type Tone = "muted" | "success" | "warning"
+
+function barParts(row: Row): Array<[string, Tone]> {
+  const parts: Array<[string, Tone]> = [[`${row.gen} gen`, "muted"]]
+  if (row.prefill !== "-") parts.push([`${row.prefill} prefill`, "muted"])
+  if (row.cache !== "-") parts.push([`cache ${row.cache}`, "muted"])
+  if (row.spec !== "-") parts.push([`spec ${row.spec}`, "muted"])
+  parts.push([`KV ${row.kv}`, Number.parseInt(row.kv) >= 85 ? "warning" : "muted"])
+  if (row.saved !== "-") parts.push([`saved ${row.saved}`, "success"])
+  return parts
 }
 
 const COLS: Array<[string, (r: Row) => string, number]> = [
   ["#", (r) => String(r.n), 3],
   ["time", (r) => r.time, 9],
-  ["gen", (r) => r.gen, 11],
-  ["prefill", (r) => r.prefill, 11],
+  ["gen", (r) => r.gen, 9],
+  ["prefill", (r) => r.prefill, 9],
   ["cache", (r) => r.cache, 6],
   ["spec", (r) => r.spec, 5],
   ["KV", (r) => r.kv, 5],
-  ["saved", (r) => r.saved, 10],
-  ["session", (r) => r.session, 0],
+  ["saved", (r) => r.saved, 9],
 ]
 
 function tableLine(row: Row): string {
@@ -138,7 +139,7 @@ const tui: TuiPlugin = async (api, options) => {
     (typeof options?.url === "string" && options.url.replace(/\/$/, "")) ||
     process.env.HALOGEN_TELEMETRY_URL ||
     DEFAULT_BASE
-  const [line, setLine] = createSignal<string>()
+  const [bar, setBar] = createSignal<Row>()
   const [rows, setRows] = createSignal<Row[]>([])
   const turns = new Map<string, Snapshot>()
   const pending = new Set<string>()
@@ -160,12 +161,12 @@ const tui: TuiPlugin = async (api, options) => {
       .then((after) => {
         const row = summarize(before, after)
         if (!row) return
-        row.session = sessionID.slice(0, 12)
+        row.sessionID = sessionID
         setRows((prev) => {
           const next = [{ ...row, n: 1 }, ...prev.slice(0, MAX_ROWS - 1).map((r, i) => ({ ...r, n: i + 2 }))]
           return next
         })
-        setLine(barText(row))
+        setBar(row)
       })
       .catch(() => {})
   }
@@ -176,34 +177,50 @@ const tui: TuiPlugin = async (api, options) => {
         api.ui.Dialog({
           size: "large",
           onClose: () => api.ui.dialog.clear(),
-          children: () =>
-            jsx(
+          children: () => {
+            const route = api.route.current
+            const sid = route.name === "session" ? (route.params?.sessionID as string | undefined) : undefined
+            const list = rows().filter((r) => !sid || r.sessionID === sid)
+            const header = COLS.map(([, , width], i) =>
+              COLS[i][0].padEnd(width),
+            ).join(" ")
+            return jsx(
               "box",
               {
                 flexDirection: "column",
+                width: "100%",
+                overflow: "hidden",
                 paddingLeft: 1,
                 paddingRight: 1,
-                children: () => {
-                  const list = rows()
-                  if (list.length === 0)
-                    return jsx("text", { fg: api.theme.current.textMuted, children: () => "no halogen telemetry yet" })
-                  return [
-                    jsx("text", {
-                      fg: api.theme.current.textMuted,
-                      attributes: 1,
-                      children: () => tableLine({ n: 0, time: "time", gen: "gen", prefill: "prefill", cache: "cache", spec: "spec", kv: "KV", saved: "saved", session: "session" } as Row),
-                    }),
-                    ...list.map((row) =>
-                      jsx("text", {
+                children: [
+                  jsx("text", { fg: api.theme.current.primary, attributes: 1, children: () => "halogen telemetry" }),
+                  jsx("text", { children: () => "" }),
+                  list.length === 0
+                    ? jsx("text", { fg: api.theme.current.textMuted, children: () => "no halogen telemetry yet" })
+                    : jsx("text", {
+                        fg: api.theme.current.textMuted,
+                        attributes: 1,
                         wrapMode: "none",
                         truncate: true,
-                        children: () => tableLine(row),
+                        children: () => header,
                       }),
-                    ),
-                  ]
-                },
+                  ...list.map((row, i) =>
+                    jsx("text", {
+                      wrapMode: "none",
+                      truncate: true,
+                      fg:
+                        row.saved !== "-"
+                          ? api.theme.current.success
+                          : row.kv !== "-" && Number.parseInt(row.kv) >= 85
+                            ? api.theme.current.warning
+                            : api.theme.current.text,
+                      children: () => tableLine({ ...row, n: i + 1 }),
+                    }),
+                  ),
+                ],
               },
-            ),
+            )
+          },
         }),
       () => {},
     )
@@ -238,16 +255,26 @@ const tui: TuiPlugin = async (api, options) => {
       app_bottom: (ctx) =>
         jsx("box", {
           flexShrink: 0,
+          flexDirection: "row",
           paddingLeft: 1,
           children: () => {
-            const value = line()
-            if (!value) return null
-            return jsx("text", {
-              wrapMode: "none",
-              truncate: true,
-              fg: ctx.theme.current.textMuted,
-              children: () => `${PROVIDER}  ${value}`,
-            })
+            const row = bar()
+            if (!row) return null
+            const t = ctx.theme.current
+            const fg = (tone: Tone) =>
+              tone === "success" ? t.success : tone === "warning" ? t.warning : t.textMuted
+            return [
+              jsx("text", { flexShrink: 0, fg: t.primary, attributes: 1, children: () => PROVIDER }),
+              ...barParts(row).map(([text, tone]) =>
+                jsx("text", { flexShrink: 0, wrapMode: "none", fg: fg(tone), children: () => ` ${text}` }),
+              ),
+              jsx("text", {
+                flexShrink: 0,
+                wrapMode: "none",
+                fg: t.borderSubtle,
+                children: () => "  ctrl+x t history",
+              }),
+            ]
           },
         }),
     },
