@@ -34,20 +34,27 @@ endpoints. Nothing is displayed for non-halogen providers; the widget shows
 
 ## Install
 
-Add to `~/.config/opencode/tui.jsonc` (create if missing):
+Clone the repo and point the TUI plugin config at the checkout. In
+`~/.config/opencode/tui.jsonc` (create if missing):
 
 ```jsonc
 {
   "plugin": [
-    ["github:konst-sh/opencode-halogen-telemetry", { "url": "http://127.0.0.1:8731" }]
+    ["/path/to/opencode-halogen-telemetry", { "url": "http://127.0.0.1:8731" }]
   ]
 }
 ```
 
 - `url` is optional; defaults to `http://127.0.0.1:8731` or the
   `HALOGEN_TELEMETRY_URL` environment variable.
-- opencode installs and caches the plugin automatically at TUI startup.
 - Restart the TUI after changing the config.
+- The plugin imports `solid-js` / `@opentui/solid` from the opencode config
+  directory (`~/.config/opencode/node_modules`); opencode installs them
+  automatically when listed in `~/.config/opencode/package.json`
+  (`solid-js`, `@opentui/core`, `@opentui/solid`).
+- Note: installing via the `github:` plugin spec currently fails silently in
+  the opencode 1.18 plugin loader (the plugin module is never imported);
+  use the local-checkout method above.
 
 ## Requirements
 
