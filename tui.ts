@@ -190,7 +190,7 @@ const tui: TuiPlugin = async (api, options) => {
     const sid = route.name === "session" ? (route.params?.sessionID as string | undefined) : undefined
     const list = rows().filter((r) => !sid || r.sessionID === sid)
     const header = headerLine(cols)
-    const tableW = cols.reduce((a, c) => a + c.width + 1, 0) + 2
+    const tableW = cols.reduce((a, c) => a + c.width + 1, 0) + 1
     const w = api.renderer.width || 80
     const h = api.renderer.height || 24
     const t = api.theme.current
@@ -233,10 +233,27 @@ const tui: TuiPlugin = async (api, options) => {
             position: "absolute",
             left: 0,
             top: 0,
+            ref: (el: any) => {
+              setTimeout(() => {
+                let n = el.parent
+                let top = 0
+                let left = 0
+                while (n) {
+                  if (n.yogaNode) {
+                    top += n.yogaNode.getComputedTop()
+                    left += n.yogaNode.getComputedLeft()
+                  }
+                  n = n.parent
+                }
+                el.top = -top
+                el.left = -left
+                el.requestRender?.()
+              }, 0)
+            },
             width: w,
             height: h,
-            paddingTop: Math.floor(h / 4),
             justifyContent: "center",
+            alignItems: "center",
             backgroundColor: "#000000aa",
             children: () => panel(),
           },
