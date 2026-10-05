@@ -121,22 +121,22 @@ type Col = { label: string; width: number; get: (r: Row) => string }
 const WIDE: Col[] = [
   { label: "#", width: 3, get: (r) => String(r.n) },
   { label: "time", width: 9, get: (r) => r.time },
-  { label: "gen", width: 9, get: (r) => r.gen },
-  { label: "prefill", width: 9, get: (r) => r.prefill },
-  { label: "cache", width: 6, get: (r) => r.cache },
-  { label: "spec", width: 5, get: (r) => r.spec },
-  { label: "KV", width: 5, get: (r) => r.kv },
-  { label: "saved", width: 9, get: (r) => r.saved },
+  { label: "gen t/s", width: 7, get: (r) => r.gen.replace(" t/s", "") },
+  { label: "prefill t/s", width: 11, get: (r) => r.prefill.replace(" t/s", "") },
+  { label: "cache %", width: 7, get: (r) => r.cache.replace("%", "") },
+  { label: "spec %", width: 6, get: (r) => r.spec.replace("%", "") },
+  { label: "KV %", width: 4, get: (r) => r.kv.replace("%", "") },
+  { label: "saved tok", width: 9, get: (r) => r.saved.replace(" tok", "") },
 ]
 
 const NARROW: Col[] = [
   { label: "#", width: 2, get: (r) => String(r.n) },
   { label: "time", width: 8, get: (r) => r.time },
-  { label: "gen", width: 8, get: (r) => r.gen },
-  { label: "cache", width: 5, get: (r) => r.cache },
-  { label: "spec", width: 4, get: (r) => r.spec },
-  { label: "KV", width: 4, get: (r) => r.kv },
-  { label: "saved", width: 8, get: (r) => r.saved },
+  { label: "gen t/s", width: 7, get: (r) => r.gen.replace(" t/s", "") },
+  { label: "cache %", width: 7, get: (r) => r.cache.replace("%", "") },
+  { label: "spec %", width: 6, get: (r) => r.spec.replace("%", "") },
+  { label: "KV %", width: 4, get: (r) => r.kv.replace("%", "") },
+  { label: "saved tok", width: 9, get: (r) => r.saved.replace(" tok", "") },
 ]
 
 function tableLine(row: Row, cols: Col[]): string {
@@ -202,15 +202,16 @@ const tui: TuiPlugin = async (api, options) => {
         paddingBottom: 1,
         backgroundColor: t.backgroundPanel,
         flexDirection: "column",
+        alignItems: "center",
         children: [
-          jsx("text", { paddingLeft: 1, fg: t.primary, attributes: 1, children: () => "halogen telemetry" }),
+          jsx("text", { fg: t.primary, attributes: 1, children: () => "halogen telemetry" }),
           jsx("text", { children: () => "" }),
           list.length === 0
-            ? jsx("text", { paddingLeft: 1, fg: t.textMuted, children: () => "no halogen telemetry yet" })
-            : jsx("text", { paddingLeft: 1, fg: t.textMuted, attributes: 1, wrapMode: "none", truncate: true, children: () => header }),
+            ? jsx("text", { fg: t.textMuted, children: () => "no halogen telemetry yet" })
+            : jsx("text", { fg: t.textMuted, attributes: 1, wrapMode: "none", truncate: true, children: () => header }),
           ...list.map((row, i) =>
             jsx("text", {
-              paddingLeft: 1,
+              wrapMode: "none",
               wrapMode: "none",
               truncate: true,
               fg:
