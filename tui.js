@@ -84,8 +84,8 @@ const tui = async (api, options) => {
     if (turns.has(sessionID) || pending.has(sessionID)) return
     pending.add(sessionID)
     snapshot(base)
-      .then((s) => turns.set(sessionID, s))
-      .catch(() => {})
+      .then((s) => { dbg("taken " + sessionID); turns.set(sessionID, s) })
+      .catch((e) => dbg("take failed " + e))
       .finally(() => pending.delete(sessionID))
   }
 
@@ -96,9 +96,10 @@ const tui = async (api, options) => {
     snapshot(base)
       .then((after) => {
         const summary = summarize(before, after)
+        dbg("finish " + summary)
         if (summary) setLine(summary)
       })
-      .catch(() => {})
+      .catch((e) => dbg("finish failed " + e))
   }
 
   api.event.on("message.updated", (event) => {
@@ -107,7 +108,7 @@ const tui = async (api, options) => {
     if (info.role !== "assistant" || info.providerID !== PROVIDER) return
     take(event.properties.sessionID)
   })
-  api.event.on("session.idle", (event) => finish(event.properties.sessionID))
+  api.event.on("session.idle", (event) => { dbg("idle " + event.properties.sessionID); finish(event.properties.sessionID) })
   api.event.on("session.status", (event) => {
     if (event.properties.status.type === "idle") finish(event.properties.sessionID)
   })
