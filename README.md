@@ -1,6 +1,6 @@
 # opencode-halogen-telemetry
 
-Persistent telemetry bar for the [halogen](https://github.com/peonist-ai) llama.cpp
+Persistent telemetry bar for the [halogen](https://github.com/peonist-ai) 
 flash server, rendered inside the [opencode](https://opencode.ai) TUI.
 
 After each assistant turn made with the `halogen` provider, a one-line status bar

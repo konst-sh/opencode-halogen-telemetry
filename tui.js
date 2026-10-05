@@ -1,7 +1,3 @@
-import { appendFileSync } from "node:fs"
-const dbg = (m) => { try { appendFileSync("/tmp/opencode/halogen-pkg-debug.log", new Date().toISOString() + " " + m + "\n") } catch {} }
-dbg("module load")
-import { createSignal } from "solid-js"
 import { jsx } from "@opentui/solid/jsx-runtime"
 
 const PROVIDER = "halogen"
@@ -70,13 +66,22 @@ function summarize(before, after) {
 }
 
 const tui = async (api, options) => {
-  dbg("tui() " + JSON.stringify(options))
   const base =
     options?.url ??
     process.env.HALOGEN_TELEMETRY_URL ??
     "http://127.0.0.1:8731"
 
-  const [line, setLine] = createSignal()
+  let bar = null
+  let current = ""
+  const paint = () => {
+    if (!bar) return
+    bar.visible = current.length > 0
+    if (current) bar.textContent = `${PROVIDER}  ${current}`
+  }
+  const setLine = (value) => {
+    current = value
+    paint()
+  }
   const turns = new Map()
   const pending = new Set()
 
@@ -84,8 +89,8 @@ const tui = async (api, options) => {
     if (turns.has(sessionID) || pending.has(sessionID)) return
     pending.add(sessionID)
     snapshot(base)
-      .then((s) => { dbg("taken " + sessionID); turns.set(sessionID, s) })
-      .catch((e) => dbg("take failed " + e))
+      .then((s) => turns.set(sessionID, s))
+      .catch(() => {})
       .finally(() => pending.delete(sessionID))
   }
 
@@ -96,19 +101,17 @@ const tui = async (api, options) => {
     snapshot(base)
       .then((after) => {
         const summary = summarize(before, after)
-        dbg("finish " + summary)
         if (summary) setLine(summary)
       })
-      .catch((e) => dbg("finish failed " + e))
+      .catch(() => {})
   }
 
   api.event.on("message.updated", (event) => {
-    dbg("msg.updated " + event.properties.info.role + " " + event.properties.info.providerID)
     const info = event.properties.info
     if (info.role !== "assistant" || info.providerID !== PROVIDER) return
     take(event.properties.sessionID)
   })
-  api.event.on("session.idle", (event) => { dbg("idle " + event.properties.sessionID); finish(event.properties.sessionID) })
+  api.event.on("session.idle", (event) => finish(event.properties.sessionID))
   api.event.on("session.status", (event) => {
     if (event.properties.status.type === "idle") finish(event.properties.sessionID)
   })
@@ -116,21 +119,18 @@ const tui = async (api, options) => {
   api.slots.register({
     order: 100,
     slots: {
-      app_bottom: (ctx) =>
-        (dbg("app_bottom render"), jsx("box", {
+      app_bottom: () =>
+        jsx("text", {
           flexShrink: 0,
           paddingLeft: 1,
-          children: () => {
-            const value = line()
-            if (!value) return null
-            return jsx("text", {
-              wrapMode: "none",
-              truncate: true,
-              fg: ctx.theme.current.textMuted,
-              children: () => `${PROVIDER}  ${value}`,
-            })
+          wrapMode: "none",
+          truncate: true,
+          visible: false,
+          ref: (el) => {
+            bar = el
+            paint()
           },
-        })),
+        }),
     },
   })
 }
