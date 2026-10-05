@@ -1,5 +1,3 @@
-import { appendFileSync } from "node:fs"
-appendFileSync("/tmp/opencode/halogen-load.log", "module loaded\n")
 import { createSignal } from "solid-js"
 import { jsx } from "@opentui/solid/jsx-runtime"
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
