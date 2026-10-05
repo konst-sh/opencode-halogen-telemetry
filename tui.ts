@@ -5,6 +5,7 @@ import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 const DEFAULT_BASE = "http://127.0.0.1:8731"
 const PROVIDER = "halogen"
 const FETCH_TIMEOUT = 1500
+const MAX_ROWS = 50
 
 type Snapshot = {
   promptTokens: number
@@ -16,6 +17,18 @@ type Snapshot = {
   draftAccepted: number
   kvRatio: number
   tokensSaved: number
+}
+
+type Row = {
+  n: number
+  time: string
+  gen: string
+  prefill: string
+  cache: string
+  spec: string
+  kv: string
+  saved: string
+  session: string
 }
 
 function parsePrometheus(text: string): Record<string, number> {
@@ -67,7 +80,7 @@ function fmt(n: number, digits = 1): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: digits })
 }
 
-function summarize(before: Snapshot, after: Snapshot): string | undefined {
+function summarize(before: Snapshot, after: Snapshot): Row | undefined {
   const genTok = delta(before.genTokens, after.genTokens)
   if (genTok === 0) return undefined
   const genSec = delta(before.genSeconds, after.genSeconds)
@@ -78,13 +91,46 @@ function summarize(before: Snapshot, after: Snapshot): string | undefined {
   const accepted = delta(before.draftAccepted, after.draftAccepted)
   const saved = delta(before.tokensSaved, after.tokensSaved)
 
-  const parts = [`${fmt(genTok / Math.max(genSec, 1e-9))} t/s gen`]
-  if (promptTok > 0 && promptSec > 0) parts.push(`${fmt(promptTok / promptSec, 0)} t/s prefill`)
-  if (cached + promptTok > 0) parts.push(`cache ${fmt((100 * cached) / (cached + promptTok), 0)}%`)
-  if (draft > 0) parts.push(`spec ${fmt((100 * accepted) / draft, 0)}%`)
-  parts.push(`KV ${fmt(100 * after.kvRatio, 0)}%`)
-  if (saved > 0) parts.push(`saved ${fmt(saved, 0)} tok`)
+  return {
+    n: 0,
+    time: new Date().toLocaleTimeString("en-GB"),
+    gen: `${fmt(genTok / Math.max(genSec, 1e-9))} t/s`,
+    prefill: promptTok > 0 && promptSec > 0 ? `${fmt(promptTok / promptSec, 0)} t/s` : "-",
+    cache: cached + promptTok > 0 ? `${fmt((100 * cached) / (cached + promptTok), 0)}%` : "-",
+    spec: draft > 0 ? `${fmt((100 * accepted) / draft, 0)}%` : "-",
+    kv: `${fmt(100 * after.kvRatio, 0)}%`,
+    saved: saved > 0 ? `${fmt(saved, 0)} tok` : "-",
+    session: "",
+  }
+}
+
+function barText(row: Row): string {
+  const parts = [`${row.gen} gen`]
+  if (row.prefill !== "-") parts.push(`${row.prefill} prefill`)
+  if (row.cache !== "-") parts.push(`cache ${row.cache}`)
+  if (row.spec !== "-") parts.push(`spec ${row.spec}`)
+  parts.push(`KV ${row.kv}`)
+  if (row.saved !== "-") parts.push(`saved ${row.saved}`)
   return parts.join("  ")
+}
+
+const COLS: Array<[string, (r: Row) => string, number]> = [
+  ["#", (r) => String(r.n), 3],
+  ["time", (r) => r.time, 9],
+  ["gen", (r) => r.gen, 11],
+  ["prefill", (r) => r.prefill, 11],
+  ["cache", (r) => r.cache, 6],
+  ["spec", (r) => r.spec, 5],
+  ["KV", (r) => r.kv, 5],
+  ["saved", (r) => r.saved, 10],
+  ["session", (r) => r.session, 0],
+]
+
+function tableLine(row: Row): string {
+  return COLS.map(([label, get, width]) => {
+    const value = get(row)
+    return width === 0 ? value : value.padEnd(width)
+  }).join(" ")
 }
 
 const tui: TuiPlugin = async (api, options) => {
@@ -93,6 +139,7 @@ const tui: TuiPlugin = async (api, options) => {
     process.env.HALOGEN_TELEMETRY_URL ||
     DEFAULT_BASE
   const [line, setLine] = createSignal<string>()
+  const [rows, setRows] = createSignal<Row[]>([])
   const turns = new Map<string, Snapshot>()
   const pending = new Set<string>()
 
@@ -111,10 +158,55 @@ const tui: TuiPlugin = async (api, options) => {
     turns.delete(sessionID)
     snapshot(base)
       .then((after) => {
-        const summary = summarize(before, after)
-        if (summary) setLine(summary)
+        const row = summarize(before, after)
+        if (!row) return
+        row.session = sessionID.slice(0, 12)
+        setRows((prev) => {
+          const next = [{ ...row, n: 1 }, ...prev.slice(0, MAX_ROWS - 1).map((r, i) => ({ ...r, n: i + 2 }))]
+          return next
+        })
+        setLine(barText(row))
       })
       .catch(() => {})
+  }
+
+  const openTable = () => {
+    api.ui.dialog.replace(
+      () =>
+        api.ui.Dialog({
+          size: "large",
+          onClose: () => api.ui.dialog.clear(),
+          children: () =>
+            jsx(
+              "box",
+              {
+                flexDirection: "column",
+                paddingLeft: 1,
+                paddingRight: 1,
+                children: () => {
+                  const list = rows()
+                  if (list.length === 0)
+                    return jsx("text", { fg: api.theme.current.textMuted, children: () => "no halogen telemetry yet" })
+                  return [
+                    jsx("text", {
+                      fg: api.theme.current.textMuted,
+                      attributes: 1,
+                      children: () => tableLine({ n: 0, time: "time", gen: "gen", prefill: "prefill", cache: "cache", spec: "spec", kv: "KV", saved: "saved", session: "session" } as Row),
+                    }),
+                    ...list.map((row) =>
+                      jsx("text", {
+                        wrapMode: "none",
+                        truncate: true,
+                        children: () => tableLine(row),
+                      }),
+                    ),
+                  ]
+                },
+              },
+            ),
+        }),
+      () => {},
+    )
   }
 
   api.event.on("message.updated", (event) => {
@@ -125,6 +217,19 @@ const tui: TuiPlugin = async (api, options) => {
   api.event.on("session.idle", (event) => finish(event.properties.sessionID))
   api.event.on("session.status", (event) => {
     if (event.properties.status.type === "idle") finish(event.properties.sessionID)
+  })
+
+  api.keymap.registerLayer({
+    commands: [
+      {
+        name: "halogen.telemetry.show",
+        title: "Show halogen telemetry",
+        category: "Halogen",
+        namespace: "palette",
+        run: openTable,
+      },
+    ],
+    bindings: [{ key: "<leader>t", desc: "Show halogen telemetry", group: "Halogen", cmd: openTable }],
   })
 
   api.slots.register({
