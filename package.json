@@ -6,9 +6,9 @@
   "license": "MIT",
   "keywords": ["opencode", "opencode-plugin", "tui", "halogen", "telemetry"],
   "exports": {
-    "./tui": "./tui.ts"
+    "./tui": "./tui.js"
   },
-  "files": ["tui.ts", "README.md"],
+  "files": ["tui.js", "README.md"],
   "dependencies": {
     "@opentui/solid": "0.4.5",
     "solid-js": "1.9.12"

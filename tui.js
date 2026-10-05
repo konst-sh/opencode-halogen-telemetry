@@ -1,24 +1,11 @@
 import { createSignal } from "solid-js"
 import { jsx } from "@opentui/solid/jsx-runtime"
-import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 
 const PROVIDER = "halogen"
 const FETCH_TIMEOUT = 1500
 
-type Snapshot = {
-  promptTokens: number
-  promptSeconds: number
-  genTokens: number
-  genSeconds: number
-  cachedTokens: number
-  draftTokens: number
-  draftAccepted: number
-  kvRatio: number
-  tokensSaved: number
-}
-
-function parsePrometheus(text: string): Record<string, number> {
-  const out: Record<string, number> = {}
+function parsePrometheus(text) {
+  const out = {}
   for (const line of text.split("\n")) {
     if (!line || line.startsWith("#")) continue
     const i = line.lastIndexOf(" ")
@@ -30,7 +17,7 @@ function parsePrometheus(text: string): Record<string, number> {
   return out
 }
 
-async function snapshot(base: string): Promise<Snapshot> {
+async function snapshot(base) {
   const [metrics, cache] = await Promise.all([
     fetch(`${base}/metrics`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`/metrics -> ${r.status}`))))
@@ -51,15 +38,15 @@ async function snapshot(base: string): Promise<Snapshot> {
   }
 }
 
-function delta(a: number, b: number): number {
+function delta(a, b) {
   return Math.max(0, b - a)
 }
 
-function fmt(n: number, digits = 1): string {
+function fmt(n, digits = 1) {
   return n.toLocaleString("en-US", { maximumFractionDigits: digits })
 }
 
-function summarize(before: Snapshot, after: Snapshot): string | undefined {
+function summarize(before, after) {
   const genTok = delta(before.genTokens, after.genTokens)
   if (genTok === 0) return undefined
   const genSec = delta(before.genSeconds, after.genSeconds)
@@ -79,17 +66,17 @@ function summarize(before: Snapshot, after: Snapshot): string | undefined {
   return parts.join("  ")
 }
 
-const tui: TuiPlugin = async (api, options) => {
+const tui = async (api, options) => {
   const base =
-    (options as { url?: string } | undefined)?.url ??
+    options?.url ??
     process.env.HALOGEN_TELEMETRY_URL ??
     "http://127.0.0.1:8731"
 
-  const [line, setLine] = createSignal<string>()
-  const turns = new Map<string, Snapshot>()
-  const pending = new Set<string>()
+  const [line, setLine] = createSignal()
+  const turns = new Map()
+  const pending = new Set()
 
-  const take = (sessionID: string) => {
+  const take = (sessionID) => {
     if (turns.has(sessionID) || pending.has(sessionID)) return
     pending.add(sessionID)
     snapshot(base)
@@ -98,7 +85,7 @@ const tui: TuiPlugin = async (api, options) => {
       .finally(() => pending.delete(sessionID))
   }
 
-  const finish = (sessionID: string) => {
+  const finish = (sessionID) => {
     const before = turns.get(sessionID)
     if (!before) return
     turns.delete(sessionID)
