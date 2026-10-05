@@ -302,8 +302,13 @@ const tui: TuiPlugin = async (api, options) => {
               tone === "success" ? t.success : tone === "warning" ? t.warning : t.textMuted
             return [
               jsx("text", { flexShrink: 0, fg: t.primary, attributes: 1, children: () => PROVIDER }),
-              ...barParts(row).map(([text, tone]) =>
-                jsx("text", { flexShrink: 0, wrapMode: "none", fg: fg(tone), children: () => ` ${text}` }),
+              ...barParts(row).map(([text, tone], i) =>
+                jsx("text", {
+                  flexShrink: 0,
+                  wrapMode: "none",
+                  fg: fg(tone),
+                  children: () => `${i === 0 ? "  " : "  \u00b7  "}${text}`,
+                }),
               ),
               jsx("text", {
                 flexShrink: 0,
