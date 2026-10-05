@@ -122,30 +122,30 @@ type Col = { label: string; width: number; get: (r: Row) => string }
 const WIDE: Col[] = [
   { label: "#", width: 3, get: (r) => String(r.n) },
   { label: "time", width: 9, get: (r) => r.time },
-  { label: "prefill", width: 9, get: (r) => r.prefill },
-  { label: "gen", width: 9, get: (r) => r.gen },
-  { label: "spec", width: 5, get: (r) => r.spec },
-  { label: "cache", width: 6, get: (r) => r.cache },
+  { label: "prefill", width: 11, get: (r) => r.prefill },
+  { label: "gen", width: 10, get: (r) => r.gen },
+  { label: "spec", width: 6, get: (r) => r.spec },
+  { label: "cache", width: 7, get: (r) => r.cache },
   { label: "KV", width: 5, get: (r) => r.kv },
-  { label: "saved", width: 10, get: (r) => r.saved },
+  { label: "saved", width: 11, get: (r) => r.saved },
 ]
 
 const NARROW: Col[] = [
   { label: "#", width: 2, get: (r) => String(r.n) },
   { label: "time", width: 8, get: (r) => r.time },
-  { label: "gen", width: 9, get: (r) => r.gen },
-  { label: "spec", width: 4, get: (r) => r.spec },
-  { label: "cache", width: 5, get: (r) => r.cache },
+  { label: "gen", width: 10, get: (r) => r.gen },
+  { label: "spec", width: 5, get: (r) => r.spec },
+  { label: "cache", width: 6, get: (r) => r.cache },
   { label: "KV", width: 4, get: (r) => r.kv },
-  { label: "saved", width: 10, get: (r) => r.saved },
+  { label: "saved", width: 11, get: (r) => r.saved },
 ]
 
 function tableLine(row: Row, cols: Col[]): string {
-  return cols.map((c) => c.get(row).padEnd(c.width)).join(" ")
+  return cols.map((c) => c.get(row).padEnd(c.width)).join("  ")
 }
 
 function headerLine(cols: Col[]): string {
-  return cols.map((c) => c.label.padEnd(c.width)).join(" ")
+  return cols.map((c) => c.label.padEnd(c.width)).join("  ")
 }
 
 const tui: TuiPlugin = async (api, options) => {
@@ -189,7 +189,7 @@ const tui: TuiPlugin = async (api, options) => {
     const sid = route.name === "session" ? (route.params?.sessionID as string | undefined) : undefined
     const list = rows().filter((r) => !sid || r.sessionID === sid)
     const header = headerLine(cols)
-    const tableW = cols.reduce((a, c) => a + c.width + 1, 0) + 1
+    const tableW = cols.reduce((a, c) => a + c.width + 2, 0) + 1
     const w = api.renderer.width || 80
     const h = api.renderer.height || 24
     const t = api.theme.current
