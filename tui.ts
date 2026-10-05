@@ -1,10 +1,25 @@
+import { createSignal } from "solid-js"
 import { jsx } from "@opentui/solid/jsx-runtime"
+import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 
+const BASE = process.env.HALOGEN_TELEMETRY_URL ?? "http://127.0.0.1:8731"
 const PROVIDER = "halogen"
 const FETCH_TIMEOUT = 1500
 
-function parsePrometheus(text) {
-  const out = {}
+type Snapshot = {
+  promptTokens: number
+  promptSeconds: number
+  genTokens: number
+  genSeconds: number
+  cachedTokens: number
+  draftTokens: number
+  draftAccepted: number
+  kvRatio: number
+  tokensSaved: number
+}
+
+function parsePrometheus(text: string): Record<string, number> {
+  const out: Record<string, number> = {}
   for (const line of text.split("\n")) {
     if (!line || line.startsWith("#")) continue
     const i = line.lastIndexOf(" ")
@@ -16,12 +31,12 @@ function parsePrometheus(text) {
   return out
 }
 
-async function snapshot(base) {
+async function snapshot(): Promise<Snapshot> {
   const [metrics, cache] = await Promise.all([
-    fetch(`${base}/metrics`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
+    fetch(`${BASE}/metrics`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`/metrics -> ${r.status}`))))
       .then(parsePrometheus),
-    fetch(`${base}/cache`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
+    fetch(`${BASE}/cache`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`/cache -> ${r.status}`)))),
   ])
   return {
@@ -37,15 +52,15 @@ async function snapshot(base) {
   }
 }
 
-function delta(a, b) {
+function delta(a: number, b: number): number {
   return Math.max(0, b - a)
 }
 
-function fmt(n, digits = 1) {
+function fmt(n: number, digits = 1): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: digits })
 }
 
-function summarize(before, after) {
+function summarize(before: Snapshot, after: Snapshot): string | undefined {
   const genTok = delta(before.genTokens, after.genTokens)
   if (genTok === 0) return undefined
   const genSec = delta(before.genSeconds, after.genSeconds)
@@ -65,40 +80,25 @@ function summarize(before, after) {
   return parts.join("  ")
 }
 
-const tui = async (api, options) => {
-  const base =
-    options?.url ??
-    process.env.HALOGEN_TELEMETRY_URL ??
-    "http://127.0.0.1:8731"
+const tui: TuiPlugin = async (api) => {
+  const [line, setLine] = createSignal<string>()
+  const turns = new Map<string, Snapshot>()
+  const pending = new Set<string>()
 
-  let bar = null
-  let current = ""
-  const paint = () => {
-    if (!bar) return
-    bar.visible = current.length > 0
-    if (current) bar.textContent = `${PROVIDER}  ${current}`
-  }
-  const setLine = (value) => {
-    current = value
-    paint()
-  }
-  const turns = new Map()
-  const pending = new Set()
-
-  const take = (sessionID) => {
+  const take = (sessionID: string) => {
     if (turns.has(sessionID) || pending.has(sessionID)) return
     pending.add(sessionID)
-    snapshot(base)
+    snapshot()
       .then((s) => turns.set(sessionID, s))
       .catch(() => {})
       .finally(() => pending.delete(sessionID))
   }
 
-  const finish = (sessionID) => {
+  const finish = (sessionID: string) => {
     const before = turns.get(sessionID)
     if (!before) return
     turns.delete(sessionID)
-    snapshot(base)
+    snapshot()
       .then((after) => {
         const summary = summarize(before, after)
         if (summary) setLine(summary)
@@ -119,20 +119,23 @@ const tui = async (api, options) => {
   api.slots.register({
     order: 100,
     slots: {
-      app_bottom: () =>
-        jsx("text", {
+      app_bottom: (ctx) =>
+        jsx("box", {
           flexShrink: 0,
           paddingLeft: 1,
-          wrapMode: "none",
-          truncate: true,
-          visible: false,
-          ref: (el) => {
-            bar = el
-            paint()
+          children: () => {
+            const value = line()
+            if (!value) return null
+            return jsx("text", {
+              wrapMode: "none",
+              truncate: true,
+              fg: ctx.theme.current.textMuted,
+              children: () => `${PROVIDER}  ${value}`,
+            })
           },
         }),
     },
   })
 }
 
-export default { id: "opencode-halogen-telemetry", tui }
+export default { id: "halogen-telemetry-bar", tui }
