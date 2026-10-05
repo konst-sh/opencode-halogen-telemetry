@@ -153,7 +153,6 @@ const tui: TuiPlugin = async (api, options) => {
     (typeof options?.url === "string" && options.url.replace(/\/$/, "")) ||
     process.env.HALOGEN_TELEMETRY_URL ||
     DEFAULT_BASE
-  const [bar, setBar] = createSignal<Row>()
   const [rows, setRows] = createSignal<Row[]>([])
   const turns = new Map<string, Snapshot>()
   const pending = new Set<string>()
@@ -180,7 +179,6 @@ const tui: TuiPlugin = async (api, options) => {
           const next = [{ ...row, n: 1 }, ...prev.slice(0, MAX_ROWS - 1).map((r, i) => ({ ...r, n: i + 2 }))]
           return next
         })
-        setBar(row)
       })
       .catch(() => {})
   }
@@ -287,35 +285,33 @@ const tui: TuiPlugin = async (api, options) => {
   })
 
   api.slots.register({
-    order: 100,
+    order: 200,
     slots: {
-      app_bottom: (ctx) =>
+      sidebar_content: (ctx, props) =>
         jsx("box", {
-          flexShrink: 0,
-          flexDirection: "row",
+          flexDirection: "column",
           paddingLeft: 1,
+          paddingRight: 1,
           children: () => {
-            const row = bar()
-            if (!row) return null
             const t = ctx.theme.current
+            const sid = (props as { session_id?: string })?.session_id
+            const row = (sid ? rows().filter((r) => r.sessionID === sid) : rows())[0]
+            if (!row) return jsx("text", { fg: t.textMuted, children: () => `${PROVIDER}  idle` })
             const fg = (tone: Tone) =>
               tone === "success" ? t.success : tone === "warning" ? t.warning : t.textMuted
             return [
-              jsx("text", { flexShrink: 0, fg: t.primary, attributes: 1, children: () => PROVIDER }),
-              ...barParts(row).map(([text, tone], i) =>
-                jsx("text", {
-                  flexShrink: 0,
-                  wrapMode: "none",
-                  fg: fg(tone),
-                  children: () => `${i === 0 ? "  " : " \u00b7 "}${text}`,
-                }),
-              ),
-              jsx("text", {
-                flexShrink: 0,
-                wrapMode: "none",
-                fg: t.borderSubtle,
-                children: () => "  ctrl+x t history",
+              jsx("text", { fg: t.primary, attributes: 1, children: () => PROVIDER }),
+              ...barParts(row).map(([text, tone]) => {
+                const i = text.indexOf(" ")
+                return jsx("box", {
+                  flexDirection: "row",
+                  children: [
+                    jsx("text", { fg: t.textMuted, children: () => text.slice(0, i).padEnd(8) }),
+                    jsx("text", { wrapMode: "none", fg: fg(tone), children: () => text.slice(i + 1) }),
+                  ],
+                })
               }),
+              jsx("text", { wrapMode: "none", fg: t.borderSubtle, children: () => "ctrl+x t history" }),
             ]
           },
         }),
