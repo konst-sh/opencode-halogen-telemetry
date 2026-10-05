@@ -185,55 +185,62 @@ const tui: TuiPlugin = async (api, options) => {
   }
 
   const openTable = () => {
+    const cols = ((api.renderer.width || 80) - 10 < 56 ? NARROW : WIDE) as Col[]
+    const route = api.route.current
+    const sid = route.name === "session" ? (route.params?.sessionID as string | undefined) : undefined
+    const list = rows().filter((r) => !sid || r.sessionID === sid)
+    const header = headerLine(cols)
+    const tableW = cols.reduce((a, c) => a + c.width + 1, 0) + 2
+    const w = api.renderer.width || 80
+    const h = api.renderer.height || 24
+    const t = api.theme.current
+    const panel = () => jsx(
+      "box",
+      {
+        width: tableW,
+        paddingTop: 1,
+        paddingBottom: 1,
+        backgroundColor: t.backgroundPanel,
+        flexDirection: "column",
+        children: [
+          jsx("text", { paddingLeft: 1, fg: t.primary, attributes: 1, children: () => "halogen telemetry" }),
+          jsx("text", { children: () => "" }),
+          list.length === 0
+            ? jsx("text", { paddingLeft: 1, fg: t.textMuted, children: () => "no halogen telemetry yet" })
+            : jsx("text", { paddingLeft: 1, fg: t.textMuted, attributes: 1, wrapMode: "none", truncate: true, children: () => header }),
+          ...list.map((row, i) =>
+            jsx("text", {
+              paddingLeft: 1,
+              wrapMode: "none",
+              truncate: true,
+              fg:
+                row.saved !== "-"
+                  ? t.success
+                  : row.kv !== "-" && Number.parseInt(row.kv) >= 85
+                    ? t.warning
+                    : t.text,
+              children: () => tableLine({ ...row, n: i + 1 }, cols),
+            }),
+          ),
+        ],
+      },
+    )
     api.ui.dialog.replace(
       () =>
-        api.ui.Dialog({
-          size: "large",
-          onClose: () => api.ui.dialog.clear(),
-          children: () => {
-            const cols = ((api.renderer.width || 80) - 10 < 56 ? NARROW : WIDE) as Col[]
-            const route = api.route.current
-            const sid = route.name === "session" ? (route.params?.sessionID as string | undefined) : undefined
-            const list = rows().filter((r) => !sid || r.sessionID === sid)
-            const header = headerLine(cols)
-            return jsx(
-              "box",
-              {
-                flexDirection: "column",
-                width: "100%",
-                overflow: "hidden",
-                paddingLeft: 1,
-                paddingRight: 1,
-                children: [
-                  jsx("text", { fg: api.theme.current.primary, attributes: 1, children: () => "halogen telemetry" }),
-                  jsx("text", { children: () => "" }),
-                  list.length === 0
-                    ? jsx("text", { fg: api.theme.current.textMuted, children: () => "no halogen telemetry yet" })
-                    : jsx("text", {
-                        fg: api.theme.current.textMuted,
-                        attributes: 1,
-                        wrapMode: "none",
-                        truncate: true,
-                        children: () => header,
-                      }),
-                  ...list.map((row, i) =>
-                    jsx("text", {
-                      wrapMode: "none",
-                      truncate: true,
-                      fg:
-                        row.saved !== "-"
-                          ? api.theme.current.success
-                          : row.kv !== "-" && Number.parseInt(row.kv) >= 85
-                            ? api.theme.current.warning
-                            : api.theme.current.text,
-                      children: () => tableLine({ ...row, n: i + 1 }, cols),
-                    }),
-                  ),
-                ],
-              },
-            )
+        jsx(
+          "box",
+          {
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: w,
+            height: h,
+            paddingTop: Math.floor(h / 4),
+            justifyContent: "center",
+            backgroundColor: "#000000aa",
+            children: () => panel(),
           },
-        }),
+        ),
       () => {},
     )
   }
