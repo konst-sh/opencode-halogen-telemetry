@@ -294,11 +294,13 @@ const tui: TuiPlugin = async (api, options) => {
             const t = ctx.theme.current
             const sid = (props as { session_id?: string })?.session_id
             const row = (sid ? rows().filter((r) => r.sessionID === sid) : rows())[0]
-            if (!row) return jsx("text", { fg: t.textMuted, children: () => "Halogen telemetry  idle" })
             const fg = (tone: Tone) =>
               tone === "success" ? t.success : tone === "warning" ? t.warning : t.textMuted
+            const header = jsx("text", { fg: t.text, attributes: 1, children: () => "Halogen telemetry" })
+            const hint = jsx("text", { wrapMode: "none", fg: t.borderSubtle, children: () => "(Ctrl+X+T for history)" })
+            if (!row) return [header, jsx("text", { fg: t.textMuted, children: () => "idle" }), hint]
             return [
-              jsx("text", { fg: t.text, attributes: 1, children: () => "Halogen telemetry" }),
+              header,
               ...barParts(row).map(([text, tone]) => {
                 const i = text.indexOf(" ")
                 return jsx("box", {
@@ -309,7 +311,7 @@ const tui: TuiPlugin = async (api, options) => {
                   ],
                 })
               }),
-              jsx("text", { wrapMode: "none", fg: t.borderSubtle, children: () => "(ctrl+x t history)" }),
+              hint,
             ]
           },
         }),
