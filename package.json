@@ -18,20 +18,9 @@
     "tui.ts",
     "README.md"
   ],
-  "peerDependencies": {
-    "@opentui/solid": ">=0.4.5",
-    "solid-js": ">=1.9",
-    "@opentui/core": ">=0.4.5"
-  },
-  "peerDependenciesMeta": {
-    "@opentui/solid": {
-      "optional": true
-    },
-    "solid-js": {
-      "optional": true
-    },
-    "@opentui/core": {
-      "optional": true
-    }
+  "dependencies": {
+    "@opentui/core": "0.4.5",
+    "@opentui/solid": "0.4.5",
+    "solid-js": "1.9.12"
   }
 }
