@@ -101,6 +101,7 @@ const tui = async (api, options) => {
   }
 
   api.event.on("message.updated", (event) => {
+    try { appendFileSync("/tmp/opencode/halogen-pkg-debug.log", "msg.updated " + event.properties.info.role + " " + event.properties.info.providerID + "\n") } catch {}
     const info = event.properties.info
     if (info.role !== "assistant" || info.providerID !== PROVIDER) return
     take(event.properties.sessionID)
@@ -114,7 +115,7 @@ const tui = async (api, options) => {
     order: 100,
     slots: {
       app_bottom: (ctx) =>
-        jsx("box", {
+        (try { appendFileSync("/tmp/opencode/halogen-pkg-debug.log", "app_bottom render\n") } catch {}, jsx("box", {
           flexShrink: 0,
           paddingLeft: 1,
           children: () => {
@@ -127,7 +128,7 @@ const tui = async (api, options) => {
               children: () => `${PROVIDER}  ${value}`,
             })
           },
-        }),
+        })),
     },
   })
 }
