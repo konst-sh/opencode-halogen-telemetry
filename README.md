@@ -1,25 +1,36 @@
 # opencode-halogen-telemetry
 
-Persistent telemetry bar for the [halogen](https://github.com/peonist-ai) 
-flash server, rendered inside the [opencode](https://opencode.ai) TUI.
+Telemetry widget for the [halogen](https://github.com/peonist-ai) flash server,
+rendered inside the [opencode](https://opencode.ai) TUI.
 
-After each assistant turn made with the `halogen` provider, a one-line status bar
-appears at the bottom of the TUI, e.g.:
+After each assistant turn made with the `halogen` provider, a **Halogen telemetry**
+widget appears in the opencode sidebar (below the LSP/Todo blocks):
 
 ```
-halogen  22.8 t/s gen  1,389 t/s prefill  cache 92%  spec 58%  KV 84%  saved 8,411 tok
+Halogen telemetry
+prefill  1,339 t/s
+gen      35.6 t/s
+spec     77%
+cache    67%
+KV       83%
+saved    325,903 tok
+(Ctrl+X,T for history)
 ```
 
-- `t/s gen` — decode speed for the turn (generated tokens / generation time)
-- `t/s prefill` — prompt processing speed
-- `cache` — prompt-cache hit rate for the turn
+- `prefill` — prompt processing speed for the turn
+- `gen` — decode speed for the turn (generated tokens / generation time)
 - `spec` — speculative-decoding (MTP draft) token acceptance
-- `KV` — current KV cache pool usage
+- `cache` — prompt-cache hit rate for the turn
+- `KV` — current KV cache pool usage (turns yellow at >= 85%)
 - `saved` — prompt tokens saved by the server-side prompt cache this turn
 
-Data comes from the server's `/metrics` (Prometheus) and `/cache` (JSON) endpoints.
-Nothing is displayed for non-halogen providers; the bar stays hidden until the
-first completed halogen turn.
+Press `Ctrl+X,T` (opencode leader + `t`) to open a **history table** of the last
+50 turns for the current session, with the same columns plus a row index and
+timestamp.
+
+Data comes from the server's `/metrics` (Prometheus) and `/cache` (JSON)
+endpoints. Nothing is displayed for non-halogen providers; the widget shows
+`idle` until the first completed halogen turn.
 
 ## Install
 
