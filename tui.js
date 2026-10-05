@@ -1,3 +1,5 @@
+import { appendFileSync } from "node:fs"
+try { appendFileSync("/tmp/opencode/halogen-pkg-debug.log", new Date().toISOString() + " module load\n") } catch {}
 import { createSignal } from "solid-js"
 import { jsx } from "@opentui/solid/jsx-runtime"
 
@@ -67,6 +69,7 @@ function summarize(before, after) {
 }
 
 const tui = async (api, options) => {
+  try { appendFileSync("/tmp/opencode/halogen-pkg-debug.log", new Date().toISOString() + " tui() " + JSON.stringify(options) + "\n") } catch {}
   const base =
     options?.url ??
     process.env.HALOGEN_TELEMETRY_URL ??
