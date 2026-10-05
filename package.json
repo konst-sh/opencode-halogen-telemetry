@@ -1,0 +1,24 @@
+{
+  "name": "opencode-halogen-telemetry",
+  "version": "0.1.0",
+  "description": "Persistent halogen llama.cpp server telemetry bar for the opencode TUI",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["opencode", "opencode-plugin", "tui", "halogen", "telemetry"],
+  "exports": {
+    "./tui": "./tui.ts"
+  },
+  "files": ["tui.ts", "README.md"],
+  "dependencies": {
+    "@opentui/solid": "0.4.5",
+    "solid-js": "1.9.12"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.18.25",
+    "@opentui/core": ">=0.4.5"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": { "optional": true },
+    "@opentui/core": { "optional": true }
+  }
+}
