@@ -203,7 +203,7 @@ const tui: TuiPlugin = async (api, options) => {
         flexDirection: "column",
         alignItems: "center",
         children: [
-          jsx("text", { fg: t.primary, attributes: 1, children: () => "halogen telemetry" }),
+          jsx("text", { fg: t.primary, attributes: 1, children: () => "Halogen telemetry" }),
           jsx("text", { children: () => "" }),
           list.length === 0
             ? jsx("text", { fg: t.textMuted, children: () => "no halogen telemetry yet" })
