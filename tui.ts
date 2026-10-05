@@ -285,22 +285,20 @@ const tui: TuiPlugin = async (api, options) => {
   })
 
   api.slots.register({
-    order: 200,
+    order: 450,
     slots: {
       sidebar_content: (ctx, props) =>
         jsx("box", {
           flexDirection: "column",
-          paddingLeft: 1,
-          paddingRight: 1,
           children: () => {
             const t = ctx.theme.current
             const sid = (props as { session_id?: string })?.session_id
             const row = (sid ? rows().filter((r) => r.sessionID === sid) : rows())[0]
-            if (!row) return jsx("text", { fg: t.textMuted, children: () => `${PROVIDER}  idle` })
+            if (!row) return jsx("text", { fg: t.textMuted, children: () => "Halogen telemetry  idle" })
             const fg = (tone: Tone) =>
               tone === "success" ? t.success : tone === "warning" ? t.warning : t.textMuted
             return [
-              jsx("text", { fg: t.primary, attributes: 1, children: () => PROVIDER }),
+              jsx("text", { fg: t.text, attributes: 1, children: () => "Halogen telemetry" }),
               ...barParts(row).map(([text, tone]) => {
                 const i = text.indexOf(" ")
                 return jsx("box", {
@@ -311,7 +309,7 @@ const tui: TuiPlugin = async (api, options) => {
                   ],
                 })
               }),
-              jsx("text", { wrapMode: "none", fg: t.borderSubtle, children: () => "ctrl+x t history" }),
+              jsx("text", { wrapMode: "none", fg: t.borderSubtle, children: () => "(ctrl+x t history)" }),
             ]
           },
         }),
