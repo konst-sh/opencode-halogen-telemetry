@@ -116,22 +116,35 @@ function barParts(row: Row): Array<[string, Tone]> {
   return parts
 }
 
-const COLS: Array<[string, (r: Row) => string, number]> = [
-  ["#", (r) => String(r.n), 3],
-  ["time", (r) => r.time, 9],
-  ["gen", (r) => r.gen, 9],
-  ["prefill", (r) => r.prefill, 9],
-  ["cache", (r) => r.cache, 6],
-  ["spec", (r) => r.spec, 5],
-  ["KV", (r) => r.kv, 5],
-  ["saved", (r) => r.saved, 9],
+type Col = { label: string; width: number; get: (r: Row) => string }
+
+const WIDE: Col[] = [
+  { label: "#", width: 3, get: (r) => String(r.n) },
+  { label: "time", width: 9, get: (r) => r.time },
+  { label: "gen", width: 9, get: (r) => r.gen },
+  { label: "prefill", width: 9, get: (r) => r.prefill },
+  { label: "cache", width: 6, get: (r) => r.cache },
+  { label: "spec", width: 5, get: (r) => r.spec },
+  { label: "KV", width: 5, get: (r) => r.kv },
+  { label: "saved", width: 9, get: (r) => r.saved },
 ]
 
-function tableLine(row: Row): string {
-  return COLS.map(([label, get, width]) => {
-    const value = get(row)
-    return width === 0 ? value : value.padEnd(width)
-  }).join(" ")
+const NARROW: Col[] = [
+  { label: "#", width: 2, get: (r) => String(r.n) },
+  { label: "time", width: 8, get: (r) => r.time },
+  { label: "gen", width: 8, get: (r) => r.gen },
+  { label: "cache", width: 5, get: (r) => r.cache },
+  { label: "spec", width: 4, get: (r) => r.spec },
+  { label: "KV", width: 4, get: (r) => r.kv },
+  { label: "saved", width: 8, get: (r) => r.saved },
+]
+
+function tableLine(row: Row, cols: Col[]): string {
+  return cols.map((c) => c.get(row).padEnd(c.width)).join(" ")
+}
+
+function headerLine(cols: Col[]): string {
+  return cols.map((c) => c.label.padEnd(c.width)).join(" ")
 }
 
 const tui: TuiPlugin = async (api, options) => {
@@ -178,12 +191,11 @@ const tui: TuiPlugin = async (api, options) => {
           size: "large",
           onClose: () => api.ui.dialog.clear(),
           children: () => {
+            const cols = ((api.renderer.width || 80) - 10 < 56 ? NARROW : WIDE) as Col[]
             const route = api.route.current
             const sid = route.name === "session" ? (route.params?.sessionID as string | undefined) : undefined
             const list = rows().filter((r) => !sid || r.sessionID === sid)
-            const header = COLS.map(([, , width], i) =>
-              COLS[i][0].padEnd(width),
-            ).join(" ")
+            const header = headerLine(cols)
             return jsx(
               "box",
               {
@@ -214,7 +226,7 @@ const tui: TuiPlugin = async (api, options) => {
                           : row.kv !== "-" && Number.parseInt(row.kv) >= 85
                             ? api.theme.current.warning
                             : api.theme.current.text,
-                      children: () => tableLine({ ...row, n: i + 1 }),
+                      children: () => tableLine({ ...row, n: i + 1 }, cols),
                     }),
                   ),
                 ],
