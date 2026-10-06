@@ -3,9 +3,10 @@ import { jsx } from "@opentui/solid/jsx-runtime"
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 
 const DEFAULT_BASE = "http://127.0.0.1:8731"
-const PROVIDER = "halogen"
 const FETCH_TIMEOUT = 1500
 const MAX_ROWS = 50
+
+type Profile = "flash" | "generic"
 
 type Snapshot = {
   promptTokens: number
@@ -17,6 +18,14 @@ type Snapshot = {
   draftAccepted: number
   kvRatio: number
   tokensSaved: number
+}
+
+type Turn = {
+  before: Snapshot
+  t0: number
+  output: number
+  input: number
+  cacheRead: number
 }
 
 type Row = {
@@ -51,14 +60,34 @@ function pick(metrics: Record<string, number>, suffix: string): number {
   return 0
 }
 
-async function snapshot(base: string): Promise<Snapshot> {
-  const [metrics, cache] = await Promise.all([
-    fetch(`${base}/metrics`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
-      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`/metrics -> ${r.status}`))))
-      .then(parsePrometheus),
+async function detectProfile(base: string): Promise<Profile> {
+  try {
+    const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
+    if (r.ok) {
+      const j = await r.json()
+      if (typeof j?.model === "string") return j.model.includes("flash") ? "flash" : "generic"
+    }
+  } catch {}
+  try {
+    const r = await fetch(`${base}/metrics`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
+    return r.ok ? "flash" : "generic"
+  } catch {
+    return "generic"
+  }
+}
+
+async function snapshot(base: string, profile: Profile): Promise<Snapshot> {
+  const [m, c] = await Promise.allSettled([
+    profile === "flash"
+      ? fetch(`${base}/metrics`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
+          .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`/metrics -> ${r.status}`))))
+          .then(parsePrometheus)
+      : Promise.resolve({} as Record<string, number>),
     fetch(`${base}/cache`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`/cache -> ${r.status}`)))),
   ])
+  const metrics = m.status === "fulfilled" ? m.value : {}
+  const cache = c.status === "fulfilled" ? c.value : undefined
   return {
     promptTokens: pick(metrics, "prompt_tokens_total"),
     promptSeconds: pick(metrics, "prompt_seconds_total"),
@@ -80,7 +109,7 @@ function fmt(n: number, digits = 1): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: digits })
 }
 
-function summarize(before: Snapshot, after: Snapshot): Row | undefined {
+function summarizeFlash(before: Snapshot, after: Snapshot): Row | undefined {
   const genTok = delta(before.genTokens, after.genTokens)
   if (genTok === 0) return undefined
   const genSec = delta(before.genSeconds, after.genSeconds)
@@ -104,6 +133,26 @@ function summarize(before: Snapshot, after: Snapshot): Row | undefined {
   }
 }
 
+function summarizeGeneric(turn: Turn, after: Snapshot): Row | undefined {
+  if (turn.output === 0) return undefined
+  const wall = Math.max((Date.now() - turn.t0) / 1000, 1e-9)
+  const read = turn.cacheRead
+  const inp = turn.input
+  const saved = delta(turn.before.tokensSaved, after.tokensSaved)
+
+  return {
+    n: 0,
+    time: new Date().toLocaleTimeString("en-GB"),
+    gen: `${fmt(turn.output / wall)} t/s`,
+    prefill: "-",
+    cache: read + inp > 0 ? `${fmt((100 * read) / (read + inp), 0)}%` : "-",
+    spec: "-",
+    kv: "-",
+    saved: saved > 0 ? `${fmt(saved, 0)} tok` : "-",
+    sessionID: "",
+  }
+}
+
 type Tone = "muted" | "success" | "warning"
 
 function barParts(row: Row): Array<[string, Tone]> {
@@ -112,7 +161,7 @@ function barParts(row: Row): Array<[string, Tone]> {
   parts.push([`gen ${row.gen}`, "muted"])
   if (row.spec !== "-") parts.push([`spec ${row.spec}`, "muted"])
   if (row.cache !== "-") parts.push([`cache ${row.cache}`, "muted"])
-  parts.push([`KV ${row.kv}`, Number.parseInt(row.kv) >= 85 ? "warning" : "muted"])
+  if (row.kv !== "-") parts.push([`KV ${row.kv}`, Number.parseInt(row.kv) >= 85 ? "warning" : "muted"])
   if (row.saved !== "-") parts.push([`saved ${row.saved}`, "success"])
   return parts
 }
@@ -153,26 +202,42 @@ const tui: TuiPlugin = async (api, options) => {
     (typeof options?.url === "string" && options.url.replace(/\/$/, "")) ||
     process.env.HALOGEN_TELEMETRY_URL ||
     DEFAULT_BASE
+  const providers: string[] =
+    Array.isArray(options?.providers) && options.providers.length > 0
+      ? options.providers
+      : ["halogen"]
   const [rows, setRows] = createSignal<Row[]>([])
-  const turns = new Map<string, Snapshot>()
+  const turns = new Map<string, Turn>()
   const pending = new Set<string>()
+  let profile: Profile | undefined
+
+  const isProvider = (id: string | undefined) => id !== undefined && providers.includes(id)
 
   const take = (sessionID: string) => {
     if (turns.has(sessionID) || pending.has(sessionID)) return
     pending.add(sessionID)
-    snapshot(base)
-      .then((s) => turns.set(sessionID, s))
+    const p = profile ?? "generic"
+    snapshot(base, p)
+      .then((s) =>
+        turns.set(sessionID, { before: s, t0: Date.now(), output: 0, input: 0, cacheRead: 0 }),
+      )
       .catch(() => {})
       .finally(() => pending.delete(sessionID))
+    if (!profile) detectProfile(base).then((d) => (profile = d))
   }
 
   const finish = (sessionID: string) => {
-    const before = turns.get(sessionID)
-    if (!before) return
+    const turn = turns.get(sessionID)
+    if (!turn) return
     turns.delete(sessionID)
-    snapshot(base)
+    const p = profile ?? "generic"
+    snapshot(base, p)
       .then((after) => {
-        const row = summarize(before, after)
+        if (p === "flash" && after.genTokens === 0 && after.promptTokens === 0) {
+          profile = "generic"
+          return
+        }
+        const row = p === "flash" ? summarizeFlash(turn.before, after) : summarizeGeneric(turn, after)
         if (!row) return
         row.sessionID = sessionID
         setRows((prev) => {
@@ -263,8 +328,17 @@ const tui: TuiPlugin = async (api, options) => {
 
   api.event.on("message.updated", (event) => {
     const info = event.properties.info
-    if (info.role !== "assistant" || info.providerID !== PROVIDER) return
+    if (info.role !== "assistant" || !isProvider(info.providerID)) return
     take(event.properties.sessionID)
+  })
+  api.event.on("message.part.updated", (event) => {
+    const part = event.properties.part
+    if (part?.type !== "step-finish" || !part.tokens) return
+    const turn = turns.get(event.properties.sessionID)
+    if (!turn) return
+    turn.output += part.tokens.output ?? 0
+    turn.input += part.tokens.input ?? 0
+    turn.cacheRead += part.tokens.cache?.read ?? 0
   })
   api.event.on("session.idle", (event) => finish(event.properties.sessionID))
   api.event.on("session.status", (event) => {
