@@ -1,7 +1,12 @@
 # opencode-halogen-telemetry
 
-Telemetry widget for the [halogen](https://github.com/peonist-ai) flash server,
-rendered inside the [opencode](https://opencode.ai) TUI.
+Telemetry widget for the [halogen](https://github.com/peonist-ai) flash server
+(`halogen-flash-server`, serving `qwen3.8-flash-next`), rendered inside the
+[opencode](https://opencode.ai) TUI.
+
+The plugin detects the server via `/health` at startup; other halogen servers
+(e.g. `halogen` 0.1.x serving `qwen3.8-27b`) are currently **not supported**
+and the plugin stays completely silent for them.
 
 After each assistant turn made with the `halogen` provider, a **Halogen telemetry**
 widget appears in the opencode sidebar (below the LSP/Todo blocks):
@@ -59,7 +64,8 @@ Clone the repo and point the TUI plugin config at the checkout. In
 ## Requirements
 
 - opencode >= 1.18 with the v2 TUI plugin runtime
-- a halogen flash server exposing `/metrics` and `/cache`
+- a halogen flash server (`halogen-flash-server`) exposing `/health`,
+  `/metrics` and `/cache`
 
 ## License
 

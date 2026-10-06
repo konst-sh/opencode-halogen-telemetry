@@ -20,14 +20,6 @@ type Snapshot = {
   tokensSaved: number
 }
 
-type Turn = {
-  before: Snapshot
-  t0: number
-  output: number
-  input: number
-  cacheRead: number
-}
-
 type Row = {
   n: number
   time: string
@@ -60,7 +52,7 @@ function pick(metrics: Record<string, number>, suffix: string): number {
   return 0
 }
 
-async function detectProfile(base: string): Promise<Profile> {
+async function detectProfile(base: string): Promise<Profile | "down"> {
   try {
     const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
     if (r.ok) {
@@ -72,22 +64,18 @@ async function detectProfile(base: string): Promise<Profile> {
     const r = await fetch(`${base}/metrics`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
     return r.ok ? "flash" : "generic"
   } catch {
-    return "generic"
+    return "down"
   }
 }
 
-async function snapshot(base: string, profile: Profile): Promise<Snapshot> {
-  const [m, c] = await Promise.allSettled([
-    profile === "flash"
-      ? fetch(`${base}/metrics`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
-          .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`/metrics -> ${r.status}`))))
-          .then(parsePrometheus)
-      : Promise.resolve({} as Record<string, number>),
+async function snapshot(base: string): Promise<Snapshot> {
+  const [metrics, cache] = await Promise.all([
+    fetch(`${base}/metrics`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`/metrics -> ${r.status}`))))
+      .then(parsePrometheus),
     fetch(`${base}/cache`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`/cache -> ${r.status}`)))),
   ])
-  const metrics = m.status === "fulfilled" ? m.value : {}
-  const cache = c.status === "fulfilled" ? c.value : undefined
   return {
     promptTokens: pick(metrics, "prompt_tokens_total"),
     promptSeconds: pick(metrics, "prompt_seconds_total"),
@@ -128,26 +116,6 @@ function summarizeFlash(before: Snapshot, after: Snapshot): Row | undefined {
     cache: cached + promptTok > 0 ? `${fmt((100 * cached) / (cached + promptTok), 0)}%` : "-",
     spec: draft > 0 ? `${fmt((100 * accepted) / draft, 0)}%` : "-",
     kv: `${fmt(100 * after.kvRatio, 0)}%`,
-    saved: saved > 0 ? `${fmt(saved, 0)} tok` : "-",
-    sessionID: "",
-  }
-}
-
-function summarizeGeneric(turn: Turn, after: Snapshot): Row | undefined {
-  if (turn.output === 0) return undefined
-  const wall = Math.max((Date.now() - turn.t0) / 1000, 1e-9)
-  const read = turn.cacheRead
-  const inp = turn.input
-  const saved = delta(turn.before.tokensSaved, after.tokensSaved)
-
-  return {
-    n: 0,
-    time: new Date().toLocaleTimeString("en-GB"),
-    gen: `${fmt(turn.output / wall)} t/s`,
-    prefill: "-",
-    cache: read + inp > 0 ? `${fmt((100 * read) / (read + inp), 0)}%` : "-",
-    spec: "-",
-    kv: "-",
     saved: saved > 0 ? `${fmt(saved, 0)} tok` : "-",
     sessionID: "",
   }
@@ -206,38 +174,31 @@ const tui: TuiPlugin = async (api, options) => {
     Array.isArray(options?.providers) && options.providers.length > 0
       ? options.providers
       : ["halogen"]
+
+  if ((await detectProfile(base)) === "generic") return
+
   const [rows, setRows] = createSignal<Row[]>([])
-  const turns = new Map<string, Turn>()
+  const turns = new Map<string, Snapshot>()
   const pending = new Set<string>()
-  let profile: Profile | undefined
 
   const isProvider = (id: string | undefined) => id !== undefined && providers.includes(id)
 
   const take = (sessionID: string) => {
     if (turns.has(sessionID) || pending.has(sessionID)) return
     pending.add(sessionID)
-    const p = profile ?? "generic"
-    snapshot(base, p)
-      .then((s) =>
-        turns.set(sessionID, { before: s, t0: Date.now(), output: 0, input: 0, cacheRead: 0 }),
-      )
+    snapshot(base)
+      .then((snap) => turns.set(sessionID, snap))
       .catch(() => {})
       .finally(() => pending.delete(sessionID))
-    if (!profile) detectProfile(base).then((d) => (profile = d))
   }
 
   const finish = (sessionID: string) => {
-    const turn = turns.get(sessionID)
-    if (!turn) return
+    const before = turns.get(sessionID)
+    if (!before) return
     turns.delete(sessionID)
-    const p = profile ?? "generic"
-    snapshot(base, p)
+    snapshot(base)
       .then((after) => {
-        if (p === "flash" && after.genTokens === 0 && after.promptTokens === 0) {
-          profile = "generic"
-          return
-        }
-        const row = p === "flash" ? summarizeFlash(turn.before, after) : summarizeGeneric(turn, after)
+        const row = summarizeFlash(before, after)
         if (!row) return
         row.sessionID = sessionID
         setRows((prev) => {
@@ -330,15 +291,6 @@ const tui: TuiPlugin = async (api, options) => {
     const info = event.properties.info
     if (info.role !== "assistant" || !isProvider(info.providerID)) return
     take(event.properties.sessionID)
-  })
-  api.event.on("message.part.updated", (event) => {
-    const part = event.properties.part
-    if (part?.type !== "step-finish" || !part.tokens) return
-    const turn = turns.get(event.properties.sessionID)
-    if (!turn) return
-    turn.output += part.tokens.output ?? 0
-    turn.input += part.tokens.input ?? 0
-    turn.cacheRead += part.tokens.cache?.read ?? 0
   })
   api.event.on("session.idle", (event) => finish(event.properties.sessionID))
   api.event.on("session.status", (event) => {
